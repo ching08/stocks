@@ -9,7 +9,7 @@ if [ -z $VIRTUAL_ENV ]; then
 	#pip install -r requirements.txt
     fi
 fi
-export PYTHONPATH=$VIRTUAL_ENV/lib/python${python_version}/site-packages
+#export PYTHONPATH=$VIRTUAL_ENV/lib/python${python_version}/site-packages
 function venv_exit() {
     deactivate
     unset PYTHONPATH
