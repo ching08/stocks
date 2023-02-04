@@ -185,10 +185,12 @@ plt.ylabel('Spot Gamma Exposure ($ billions/1% move)', fontweight="bold")
 plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot: " + str("{:,.0f}".format(spotPrice)))
 plt.legend()
 plt.savefig(os.path.join(outDir,'chart1.png'))
+plt.close()
 print(f"Chart one saved to {outDir}/chart1.png")
 
 
 # Chart 2: Absolute Gamma Exposure by Calls and Puts
+todayDate,strikes,fromStrike,toStrike,dfAgg,spotPrice,df=conver_csv(tmpFile)
 print_header('chart 2: Absolute Gamma Exposure by Calls and Puts')
 plt.grid()
 plt.bar(strikes, dfAgg['CallGEX'].to_numpy() / 10**9, width=6, linewidth=0.1, edgecolor='k', label="Call Gamma")
@@ -201,6 +203,7 @@ plt.ylabel('Spot Gamma Exposure ($ billions/1% move)', fontweight="bold")
 plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot:" + str("{:,.0f}".format(spotPrice)))
 plt.legend()
 plt.savefig(os.path.join(outDir,'chart2.png'))
+plt.close()
 print(f"Chart one saved to {outDir}/chart2.png")
 
 
@@ -276,6 +279,7 @@ plt.fill_between([fromStrike, zeroGamma], min(totalGamma), max(totalGamma), face
 plt.fill_between([zeroGamma, toStrike], min(totalGamma), max(totalGamma), facecolor='green', alpha=0.1, transform=trans)
 plt.legend()
 plt.savefig(os.path.join(outDir,'chart3.png'))
+plt.close()
 print(f"Chart one saved to {outDir}/chart3.png")
 
 
