@@ -2,7 +2,7 @@ pandas
 numpy
 scipy
 matplotlib
-pillow
+img2pdf
 ipdb
 termcolor
 ipython

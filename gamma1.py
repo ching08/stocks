@@ -9,6 +9,9 @@ import sys
 import os,shutil
 import os
 import img2pdf
+import argparse
+import termcolor
+
 
 
 
@@ -100,31 +103,41 @@ def conver_csv(filename):
     return todayDate,strikes, fromStrike,toStrike, dfAgg, spotPrice, df
 
 
-def get_today_data(df):
-
-    today=todayDate.strftime('%m/%d/%Y')
-    for record in df:
-        expireDate = (df['ExpirationDate'][0] - timedelta(hours=16)).strftime('%m/%d/%Y')
-        print(f'{today} == {expireDate}')
-        if today != expireDate:
-            break
+def error_out(msg):
+    termcolor.cprint(f"ERROR: {msg}",color='red')
+    sys.exit(1)
     
 
-def extract_csv_today(inFile):
+def extract_csv_by_date(inFile,startDatetime,endDatetime):
     outFile=os.path.join(outDir,'_tmpfile.csv')
     f1=open(outFile,'w')
-    tday=datetime.today().strftime('%b %d %Y').lower()
+    #t1=datetime.strptime(date, '%b %d %Y')
+    cnt=0
+    allDates=[]
     with open(inFile) as f:
         for i,line in enumerate(f.readlines()):
             if i <= 3:
                 f1.write(line)
             else:
-                date = line.split(',')[0]
-                if tday not in date.lower():
-                    break
+                csvDate =' '.join(line.split(',')[0].split()[1:])
+                allDates.append(csvDate)
+                csvDatetime = datetime.strptime(csvDate,'%b %d %Y')  
+                if csvDatetime < startDatetime or csvDatetime > endDatetime:
+                    continue
+                else:
+                    cnt += 1
                 f1.write(line)
-        f1.close()   
-    return outFile
+        f1.close()
+
+    allDates1=list(dict.fromkeys(allDates))
+    d1=datetime.strftime(startDatetime,'%b %d %Y')
+    d2=datetime.strftime(endDatetime,'%b %d %Y')
+    if cnt == 0:
+        error_out(f"Did not find any data in {inFile} matches '{d1}' ~ '{d2}'\nAvialable dates are {allDates1}")
+    else:
+        termcolor.cprint(f"found {cnt} data in {inFile} matches '{d1}' ~ '{d2}'",color='green')
+
+    return outFile,allDates1
 
 
 def print_header(msg):
@@ -133,23 +146,44 @@ def print_header(msg):
     print('*'* 120)
     
 
+###############
+# main
+###############
+# validate
+if not os.path.exists(inputFile):
+    error_out(f"Please provide file {inputFile} in {os.path.curdir}")
 
-# parse inFile to contains data only matches today's date
-tmpFile=extract_csv_today(inputFile)
+
+tday=datetime.strftime(datetime.today(),'%b %d %Y')
+parser = argparse.ArgumentParser()
+parser.add_argument('-s','--start-date',default=tday,help=f"starting date, default is  %(default)s. example: python3 %(prog)s -s 'Feb 03 2023'")
+parser.add_argument('-d','--duration',default=1,help="duration , default is %(default)s days. example python3 %(prog)s -s 'Feb 03 2023' -d 2")
+
+args = parser.parse_args()
+
+# get startdate and end date
+startDate=args.start_date
+startDatetime=datetime.strptime(startDate,'%b %d %Y') 
+endDatetime= startDatetime + timedelta(days=int(args.duration)-1)
+endDate=datetime.strftime(endDatetime,'%b %d %Y')
+
+
+## extracing csv by startdate and enddate
+
+tmpFile,allDates=extract_csv_by_date(inputFile,startDatetime,endDatetime)
 todayDate,strikes,fromStrike,toStrike,dfAgg,spotPrice,df=conver_csv(tmpFile)
-
+dateRange=f"{datetime.strftime(startDatetime,'%m/%d/%Y')}~{datetime.strftime(endDatetime,'%m/%d/%Y')}"
 # Chart 1: Absolute Gamma Exposure
 print_header('chart 1: Absolute Gamma Exposure')
 plt.grid()
 plt.bar(strikes, dfAgg['TotalGamma'].to_numpy(), width=6, linewidth=0.1, edgecolor='k', label="Gamma Exposure")
 plt.xlim([fromStrike, toStrike])
-chartTitle = "Chart1 Total Gamma: $" + str("{:.2f}".format(df['TotalGamma'].sum())) + " Bn per 1% SPX Move"
-plt.title(chartTitle, fontweight="bold", fontsize=14)
+chartTitle = "Total Gamma: $" + str("{:.2f}".format(df['TotalGamma'].sum())) + " Bn per 1% SPX Move, " + dateRange 
+plt.title(chartTitle, fontweight="bold", fontsize=12)
 plt.xlabel('Strike', fontweight="bold")
 plt.ylabel('Spot Gamma Exposure ($ billions/1% move)', fontweight="bold")
 plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot: " + str("{:,.0f}".format(spotPrice)))
 plt.legend()
-#plt.show()
 plt.savefig(os.path.join(outDir,'chart1.png'))
 print(f"Chart one saved to {outDir}/chart1.png")
 
@@ -160,13 +194,12 @@ plt.grid()
 plt.bar(strikes, dfAgg['CallGEX'].to_numpy() / 10**9, width=6, linewidth=0.1, edgecolor='k', label="Call Gamma")
 plt.bar(strikes, dfAgg['PutGEX'].to_numpy() / 10**9, width=6, linewidth=0.1, edgecolor='k', label="Put Gamma")
 plt.xlim([fromStrike, toStrike])
-chartTitle = "Chart2 Total Gamma: $" + str("{:.2f}".format(df['TotalGamma'].sum())) + " Bn per 1% SPX Move"
-plt.title(chartTitle, fontweight="bold", fontsize=14)
+chartTitle = "Total Gamma: $" + str("{:.2f}".format(df['TotalGamma'].sum())) + " Bn per 1% SPX Move, " + dateRange 
+plt.title(chartTitle, fontweight="bold", fontsize=12)
 plt.xlabel('Strike', fontweight="bold")
 plt.ylabel('Spot Gamma Exposure ($ billions/1% move)', fontweight="bold")
 plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot:" + str("{:,.0f}".format(spotPrice)))
 plt.legend()
-#plt.show()
 plt.savefig(os.path.join(outDir,'chart2.png'))
 print(f"Chart one saved to {outDir}/chart2.png")
 
@@ -176,7 +209,7 @@ print(f"Chart one saved to {outDir}/chart2.png")
 # parse Data for chart3
 todayDate,strikes,fromStrike,toStrike,dfAgg,spotPrice,df=conver_csv(inputFile)
 
-print_header('Chart 3: Gama Exposure profile')
+print_header('Chart3: Gama Exposure profile')
 levels = np.linspace(fromStrike, toStrike, 60)
 
 # For 0DTE options, I'm setting DTE = 1 day, otherwise they get excluded
@@ -230,8 +263,8 @@ plt.grid()
 plt.plot(levels, totalGamma, label="All Expiries")
 plt.plot(levels, totalGammaExNext, label="Ex-Next Expiry")
 plt.plot(levels, totalGammaExFri, label="Ex-Next Monthly Expiry")
-chartTitle = "Chart3 Gamma Exposure Profile, SPX, " + todayDate.strftime('%d %b %Y')
-plt.title(chartTitle, fontweight="bold", fontsize=14)
+chartTitle = "Gamma Exposure Profile, SPX, " + todayDate.strftime('%d %b %Y')
+plt.title(chartTitle, fontweight="bold", fontsize=12)
 plt.xlabel('Index Price', fontweight="bold")
 plt.ylabel('Gamma Exposure ($ billions/1% move)', fontweight="bold")
 plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot: " + str("{:,.0f}".format(spotPrice)))
@@ -242,7 +275,6 @@ trans = ax.get_xaxis_transform()
 plt.fill_between([fromStrike, zeroGamma], min(totalGamma), max(totalGamma), facecolor='red', alpha=0.1, transform=trans)
 plt.fill_between([zeroGamma, toStrike], min(totalGamma), max(totalGamma), facecolor='green', alpha=0.1, transform=trans)
 plt.legend()
-#plt.show()
 plt.savefig(os.path.join(outDir,'chart3.png'))
 print(f"Chart one saved to {outDir}/chart3.png")
 
