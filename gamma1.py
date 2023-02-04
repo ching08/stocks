@@ -158,8 +158,11 @@ tday=datetime.strftime(datetime.today(),'%b %d %Y')
 parser = argparse.ArgumentParser()
 parser.add_argument('-s','--start-date',default=tday,help=f"starting date, default is  %(default)s. example: python3 %(prog)s -s 'Feb 03 2023'")
 parser.add_argument('-d','--duration',default=1,help="duration , default is %(default)s days. example python3 %(prog)s -s 'Feb 03 2023' -d 2")
+parser.add_argument('-f','--chart3',action='store_true', help='show chart3. default is off')
 
 args = parser.parse_args()
+
+
 
 # get startdate and end date
 startDate=args.start_date
@@ -207,80 +210,80 @@ plt.close()
 print(f"Chart one saved to {outDir}/chart2.png")
 
 
+if args.chart3:
+    # ---=== CALCULATE GAMMA PROFILE ===---
+    # parse Data for chart3
+    todayDate,strikes,fromStrike,toStrike,dfAgg,spotPrice,df=conver_csv(inputFile)
 
-# ---=== CALCULATE GAMMA PROFILE ===---
-# parse Data for chart3
-todayDate,strikes,fromStrike,toStrike,dfAgg,spotPrice,df=conver_csv(inputFile)
+    print_header('Chart3: Gama Exposure profile')
+    levels = np.linspace(fromStrike, toStrike, 60)
 
-print_header('Chart3: Gama Exposure profile')
-levels = np.linspace(fromStrike, toStrike, 60)
+    # For 0DTE options, I'm setting DTE = 1 day, otherwise they get excluded
+    df['daysTillExp'] = [1/262 if (np.busday_count(todayDate.date(), x.date())) == 0 \
+                            else np.busday_count(todayDate.date(), x.date())/262 for x in df.ExpirationDate]
 
-# For 0DTE options, I'm setting DTE = 1 day, otherwise they get excluded
-df['daysTillExp'] = [1/262 if (np.busday_count(todayDate.date(), x.date())) == 0 \
-                           else np.busday_count(todayDate.date(), x.date())/262 for x in df.ExpirationDate]
+    nextExpiry = df['ExpirationDate'].min()
 
-nextExpiry = df['ExpirationDate'].min()
+    df['IsThirdFriday'] = [isThirdFriday(x) for x in df.ExpirationDate]
+    thirdFridays = df.loc[df['IsThirdFriday'] == True]
+    nextMonthlyExp = thirdFridays['ExpirationDate'].min()
 
-df['IsThirdFriday'] = [isThirdFriday(x) for x in df.ExpirationDate]
-thirdFridays = df.loc[df['IsThirdFriday'] == True]
-nextMonthlyExp = thirdFridays['ExpirationDate'].min()
+    totalGamma = []
+    totalGammaExNext = []
+    totalGammaExFri = []
 
-totalGamma = []
-totalGammaExNext = []
-totalGammaExFri = []
+    # For each spot level, calc gamma exposure at that point
+    for level in levels:
+        df['callGammaEx'] = df.apply(lambda row : calcGammaEx(level, row['StrikePrice'], row['CallIV'],
+                                                            row['daysTillExp'], 0, 0, "call", row['CallOpenInt']), axis = 1)
 
-# For each spot level, calc gamma exposure at that point
-for level in levels:
-    df['callGammaEx'] = df.apply(lambda row : calcGammaEx(level, row['StrikePrice'], row['CallIV'],
-                                                          row['daysTillExp'], 0, 0, "call", row['CallOpenInt']), axis = 1)
+        df['putGammaEx'] = df.apply(lambda row : calcGammaEx(level, row['StrikePrice'], row['PutIV'],
+                                                            row['daysTillExp'], 0, 0, "put", row['PutOpenInt']), axis = 1)
 
-    df['putGammaEx'] = df.apply(lambda row : calcGammaEx(level, row['StrikePrice'], row['PutIV'],
-                                                         row['daysTillExp'], 0, 0, "put", row['PutOpenInt']), axis = 1)
+        totalGamma.append(df['callGammaEx'].sum() - df['putGammaEx'].sum())
 
-    totalGamma.append(df['callGammaEx'].sum() - df['putGammaEx'].sum())
+        exNxt = df.loc[df['ExpirationDate'] != nextExpiry]
+        totalGammaExNext.append(exNxt['callGammaEx'].sum() - exNxt['putGammaEx'].sum())
 
-    exNxt = df.loc[df['ExpirationDate'] != nextExpiry]
-    totalGammaExNext.append(exNxt['callGammaEx'].sum() - exNxt['putGammaEx'].sum())
+        exFri = df.loc[df['ExpirationDate'] != nextMonthlyExp]
+        totalGammaExFri.append(exFri['callGammaEx'].sum() - exFri['putGammaEx'].sum())
 
-    exFri = df.loc[df['ExpirationDate'] != nextMonthlyExp]
-    totalGammaExFri.append(exFri['callGammaEx'].sum() - exFri['putGammaEx'].sum())
+    totalGamma = np.array(totalGamma) / 10**9
+    totalGammaExNext = np.array(totalGammaExNext) / 10**9
+    totalGammaExFri = np.array(totalGammaExFri) / 10**9
 
-totalGamma = np.array(totalGamma) / 10**9
-totalGammaExNext = np.array(totalGammaExNext) / 10**9
-totalGammaExFri = np.array(totalGammaExFri) / 10**9
+    # Find Gamma Flip Point
+    zeroCrossIdx = np.where(np.diff(np.sign(totalGamma)))[0]
 
-# Find Gamma Flip Point
-zeroCrossIdx = np.where(np.diff(np.sign(totalGamma)))[0]
+    negGamma = totalGamma[zeroCrossIdx]
+    posGamma = totalGamma[zeroCrossIdx+1]
+    negStrike = levels[zeroCrossIdx]
+    posStrike = levels[zeroCrossIdx+1]
 
-negGamma = totalGamma[zeroCrossIdx]
-posGamma = totalGamma[zeroCrossIdx+1]
-negStrike = levels[zeroCrossIdx]
-posStrike = levels[zeroCrossIdx+1]
+    zeroGamma = posStrike - ((posStrike - negStrike) * posGamma/(posGamma-negGamma))
+    zeroGamma = zeroGamma[0]
 
-zeroGamma = posStrike - ((posStrike - negStrike) * posGamma/(posGamma-negGamma))
-zeroGamma = zeroGamma[0]
-
-# Chart 3: Gamma Exposure Profile
-fig, ax = plt.subplots()
-plt.grid()
-plt.plot(levels, totalGamma, label="All Expiries")
-plt.plot(levels, totalGammaExNext, label="Ex-Next Expiry")
-plt.plot(levels, totalGammaExFri, label="Ex-Next Monthly Expiry")
-chartTitle = "Gamma Exposure Profile, SPX, " + todayDate.strftime('%d %b %Y')
-plt.title(chartTitle, fontweight="bold", fontsize=12)
-plt.xlabel('Index Price', fontweight="bold")
-plt.ylabel('Gamma Exposure ($ billions/1% move)', fontweight="bold")
-plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot: " + str("{:,.0f}".format(spotPrice)))
-plt.axvline(x=zeroGamma, color='g', lw=1, label="Gamma Flip: " + str("{:,.0f}".format(zeroGamma)))
-plt.axhline(y=0, color='grey', lw=1)
-plt.xlim([fromStrike, toStrike])
-trans = ax.get_xaxis_transform()
-plt.fill_between([fromStrike, zeroGamma], min(totalGamma), max(totalGamma), facecolor='red', alpha=0.1, transform=trans)
-plt.fill_between([zeroGamma, toStrike], min(totalGamma), max(totalGamma), facecolor='green', alpha=0.1, transform=trans)
-plt.legend()
-plt.savefig(os.path.join(outDir,'chart3.png'))
-plt.close()
-print(f"Chart one saved to {outDir}/chart3.png")
+    # Chart 3: Gamma Exposure Profile
+    fig, ax = plt.subplots()
+    plt.grid()
+    plt.plot(levels, totalGamma, label="All Expiries")
+    plt.plot(levels, totalGammaExNext, label="Ex-Next Expiry")
+    plt.plot(levels, totalGammaExFri, label="Ex-Next Monthly Expiry")
+    chartTitle = "Gamma Exposure Profile, SPX, " + todayDate.strftime('%d %b %Y')
+    plt.title(chartTitle, fontweight="bold", fontsize=12)
+    plt.xlabel('Index Price', fontweight="bold")
+    plt.ylabel('Gamma Exposure ($ billions/1% move)', fontweight="bold")
+    plt.axvline(x=spotPrice, color='r', lw=1, label="SPX Spot: " + str("{:,.0f}".format(spotPrice)))
+    plt.axvline(x=zeroGamma, color='g', lw=1, label="Gamma Flip: " + str("{:,.0f}".format(zeroGamma)))
+    plt.axhline(y=0, color='grey', lw=1)
+    plt.xlim([fromStrike, toStrike])
+    trans = ax.get_xaxis_transform()
+    plt.fill_between([fromStrike, zeroGamma], min(totalGamma), max(totalGamma), facecolor='red', alpha=0.1, transform=trans)
+    plt.fill_between([zeroGamma, toStrike], min(totalGamma), max(totalGamma), facecolor='green', alpha=0.1, transform=trans)
+    plt.legend()
+    plt.savefig(os.path.join(outDir,'chart3.png'))
+    plt.close()
+    print(f"Chart one saved to {outDir}/chart3.png")
 
 
 ### create pdf files
