@@ -15,14 +15,6 @@ import termcolor
 
 
 
-# Inputs and Parameters
-inputFile = 'spx_quotedata.csv'
-outDir='outputs'
-if os.path.exists(outDir):
-    shutil.rmtree(outDir)
-os.makedirs(outDir,mode=0o777)
-
-
 # Black-Scholes European-Options Gamma
 def calcGammaEx(S, K, vol, T, r, q, optType, OI):
     if T == 0 or vol == 0:
@@ -150,17 +142,28 @@ def print_header(msg):
 # main
 ###############
 # validate
-if not os.path.exists(inputFile):
-    error_out(f"Please provide file {inputFile} in {os.path.curdir}")
 
-
+usage=f"python3 {sys.argv[0]} <myfile.csv>"
 tday=datetime.strftime(datetime.today(),'%b %d %Y')
 parser = argparse.ArgumentParser()
-parser.add_argument('-s','--start-date',default=tday,help=f"starting date, default is  %(default)s. example: python3 %(prog)s -s 'Feb 03 2023'")
-parser.add_argument('-d','--duration',default=1,help="duration , default is %(default)s days. example python3 %(prog)s -s 'Feb 03 2023' -d 2")
-parser.add_argument('-f','--chart3',action='store_true', help='show chart3. default is off')
+parser.add_argument('infile',help=f'input csv filename. example {usage}')
+parser.add_argument('-s','--start-date',default=tday,help=f"starting date, default is  %(default)s. example: {usage} -s 'Feb 03 2023'")
+parser.add_argument('-d','--duration',default=1,help=f"duration , default is %(default)s days. example {usage} -s 'Feb 03 2023' -d 2")
+parser.add_argument('-f','--chart3',action='store_true', help=f'show chart3. default is off. example {usage} -f')
 
 args = parser.parse_args()
+
+
+
+# Inputs and output
+inputFile = args.infile
+if not os.path.exists(inputFile):
+    error_out(f"Please provide file <inputFile>: example: {usage}")
+    
+outDir='outputs'
+if os.path.exists(outDir):
+    shutil.rmtree(outDir)
+os.makedirs(outDir,mode=0o777)
 
 
 

@@ -4,10 +4,10 @@ if [ -z $VIRTUAL_ENV ]; then
     virtualenv .venv
     . .venv/bin/activate
     
-    if [ -f requirements.txt ]; then
-	pip install -r requirements.txt --target $VIRTUAL_ENV/lib/python${python_version}/site-packages
-	#pip install -r requirements.txt
-    fi
+    # if [ -f requirements.txt ]; then
+    # 	pip install -r requirements.txt --target $VIRTUAL_ENV/lib/python${python_version}/site-packages
+    # 	#pip install -r requirements.txt
+    # fi
 fi
 #export PYTHONPATH=$VIRTUAL_ENV/lib/python${python_version}/site-packages
 function venv_exit() {
